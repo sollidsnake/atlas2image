@@ -1,32 +1,77 @@
-from PIL import Image
+import os
 import argparse
+from PIL import Image
 
-def crop(image_path, width, height):
-    img: PIL.PngImagePlugin.PngImageFile = Image.open(image_path)
-    total_width, total_height = img.size
+class Atlas2Image:
+    img_path: str
+    width: int
+    height: int
 
-    if total_width % width or total_height % height:
-        raise ValueError("Cropped width or height doesn't match image size")
+    def __init__(self, img_path, width, height, name_x=[], name_y=[]):
+        self.img_path = img_path
+        self.width = width
+        self.height = height
+        self.name_x = name_x
+        self.name_y = name_y
 
-    x_frames = int(total_width / width)
-    y_frames = int(total_height / height)
+    @staticmethod
+    def _get_name(names, index):
+        if index < len(names):
+            return names[index]
+        return index
 
-    imgs = []
-    for xf in range(x_frames):
-        for yf in range(y_frames):
-            x_init = width * xf
-            y_init = height * yf
-            x_end = x_init + width
-            y_end = y_init + height
-            imgs.append(
-                {
-                    'pos': '%s-%s' % (xf, yf),
-                    'img': img.crop((x_init, y_init, x_end, y_end))
-                }
-            )
+    def _crop(self):
+        img: PIL.PngImagePlugin.PngImageFile = Image.open(self.img_path)
+        total_width, total_height = img.size
 
-    for img in imgs:
-        img['img'].save(img['pos'] + '.png', 'PNG')
+        if total_width % self.width or total_height % self.height:
+            raise ValueError("Cropped width or height doesn't match image size")
+
+        x_frames = int(total_width / self.width)
+        y_frames = int(total_height / self.height)
+
+        imgs = []
+        for xf in range(x_frames):
+            for yf in range(y_frames):
+                x_init = self.width * xf
+                y_init = self.height * yf
+                x_end = x_init + self.width
+                y_end = y_init + self.height
+
+                name_x = self._get_name(self.name_x, xf)
+                name_y = self._get_name(self.name_y, yf)
+
+                imgs.append(
+                    {
+                        'pos': '%s-%s' % (name_x, name_y),
+                        'img': img.crop((x_init, y_init, x_end, y_end))
+                    }
+                )
+
+        for img in imgs:
+            yield img
+
+    def crop(self):
+        self.imgs = self._crop()
+
+    def save_img(self, dest_dir=None):
+        if dest_dir is None:
+            dest_dir = '.'
+
+        for img in self.imgs:
+            img['img'].save(os.path.join(dest_dir, img['pos']) + '.png', 'PNG')
+
+
+    @staticmethod
+    def process_name(name=None):
+        if type(name) != str:
+            return []
+
+        names = []
+        for i in name.split(','):
+            names.append(i.strip())
+
+        return names
 
 
 if __name__ == '__main__':
@@ -34,5 +79,16 @@ if __name__ == '__main__':
     parser.add_argument('img_path', type=str)
     parser.add_argument('width', type=int)
     parser.add_argument('height', type=int)
+    parser.add_argument('--output-path', type=str)
+    parser.add_argument('--name-x', type=str)
+    parser.add_argument('--name-y', type=str)
+
     arg = parser.parse_args()
-    crop(arg.img_path, arg.width, arg.height)
+
+
+    name_x = (Atlas2Image.process_name(arg.name_x))
+    name_y = (Atlas2Image.process_name(arg.name_y))
+
+    atlas = Atlas2Image(arg.img_path, arg.width, arg.height, name_x=name_x, name_y=name_y)
+    atlas.crop()
+    atlas.save_img(arg.output_path)
